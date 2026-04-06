@@ -1,0 +1,15 @@
+[Unit]
+Description=Polymarket Tweet Tracker Bot
+After=network.target
+
+[Service]
+Type=simple
+User=botuser
+WorkingDirectory=/opt/polymarket-tracker
+ExecStart=/opt/polymarket-tracker/venv/bin/python main.py
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/polymarket-tracker/.env
+
+[Install]
+WantedBy=multi-user.target

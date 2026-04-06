@@ -1,0 +1,159 @@
+"""
+Xtracker adapter — fetches the current tweet count from the Xtracker API.
+
+Discovered API:
+  GET /api/users/{handle}             → user info + all trackings
+  GET /api/trackings/{id}?includeStats=true → tracking stats (stats.total = tweet count)
+  GET /api/users/{handle}/posts?startDate=...&endDate=... → raw posts (fallback)
+
+Each tracking has a `marketLink` that matches a Polymarket event URL.
+The flow:
+  1. On /add: call find_tracking_for_event() to get the tracking ID
+  2. On each monitoring tick: call get_tweet_count(tracking_id) for the count
+  3. Fallback: count posts in date range if no tracking is found
+"""
+
+import logging
+from dataclasses import dataclass
+from typing import Optional
+from urllib.parse import urlparse
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+
+class XtrackerError(Exception):
+    pass
+
+
+@dataclass
+class TrackingInfo:
+    tracking_id: str
+    title: str
+    start_date: str
+    end_date: str
+    market_link: Optional[str]
+    is_active: bool
+
+
+class XtrackerClient:
+    def __init__(
+        self,
+        base_url: str = "https://xtracker.polymarket.com",
+        handle: str = "elonmusk",
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.handle = handle
+        self.client = httpx.AsyncClient(
+            timeout=30.0,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; PolymarketTracker/1.0)",
+                "Accept": "application/json",
+            },
+            follow_redirects=True,
+        )
+
+    # ── Primary: tweet count by tracking ID ─────────────────────────
+
+    async def get_tweet_count(self, tracking_id: str) -> int:
+        """Fetch cumulative tweet count from tracking stats."""
+        url = f"{self.base_url}/api/trackings/{tracking_id}"
+        resp = await self.client.get(url, params={"includeStats": "true"})
+        resp.raise_for_status()
+
+        data = resp.json()
+        if not data.get("success"):
+            raise XtrackerError(f"API returned success=false for tracking {tracking_id}")
+
+        stats = data.get("data", {}).get("stats", {})
+        total = stats.get("total")
+        if total is None:
+            raise XtrackerError(f"No stats.total in tracking {tracking_id}")
+
+        logger.info("Tweet count from tracking %s: %d", tracking_id, total)
+        return int(total)
+
+    # ── Fallback: count posts in date range ─────────────────────────
+
+    async def get_tweet_count_by_dates(
+        self, start_date: str, end_date: str
+    ) -> int:
+        """Count posts between two ISO dates (fallback if no tracking)."""
+        url = f"{self.base_url}/api/users/{self.handle}/posts"
+        resp = await self.client.get(
+            url, params={"startDate": start_date, "endDate": end_date}
+        )
+        resp.raise_for_status()
+
+        data = resp.json()
+        posts = data.get("data", [])
+        count = len(posts)
+        logger.info("Tweet count by date range: %d posts", count)
+        return count
+
+    # ── Discovery: find tracking for a Polymarket event ─────────────
+
+    async def find_tracking_for_event(self, event_url: str) -> Optional[TrackingInfo]:
+        """Match a Polymarket event URL to an Xtracker tracking."""
+        url = f"{self.base_url}/api/users/{self.handle}"
+        resp = await self.client.get(url)
+        resp.raise_for_status()
+
+        data = resp.json()
+        trackings = data.get("data", {}).get("trackings", [])
+
+        event_slug = self._extract_slug(event_url)
+
+        for t in trackings:
+            market_link = t.get("marketLink") or ""
+            tracking_slug = self._extract_slug(market_link)
+            if event_slug and tracking_slug and event_slug == tracking_slug:
+                info = TrackingInfo(
+                    tracking_id=t["id"],
+                    title=t.get("title", ""),
+                    start_date=t.get("startDate", ""),
+                    end_date=t.get("endDate", ""),
+                    market_link=market_link,
+                    is_active=t.get("isActive", False),
+                )
+                logger.info(
+                    "Found tracking %s for event %s", info.tracking_id, event_slug
+                )
+                return info
+
+        logger.warning("No tracking found for event URL: %s", event_url)
+        return None
+
+    async def get_all_trackings(self) -> list[TrackingInfo]:
+        """Return all trackings for the user."""
+        url = f"{self.base_url}/api/users/{self.handle}"
+        resp = await self.client.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        return [
+            TrackingInfo(
+                tracking_id=t["id"],
+                title=t.get("title", ""),
+                start_date=t.get("startDate", ""),
+                end_date=t.get("endDate", ""),
+                market_link=t.get("marketLink"),
+                is_active=t.get("isActive", False),
+            )
+            for t in data.get("data", {}).get("trackings", [])
+        ]
+
+    # ── Helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_slug(url: str) -> Optional[str]:
+        if not url:
+            return None
+        path = urlparse(url).path.strip("/")
+        parts = path.split("/")
+        if len(parts) >= 2 and parts[0] == "event":
+            return parts[1].lower()
+        return path.lower() if path else None
+
+    async def close(self) -> None:
+        await self.client.aclose()
