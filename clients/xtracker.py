@@ -15,6 +15,7 @@ The flow:
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -77,12 +78,16 @@ class XtrackerClient:
     # ── Fallback: count posts in date range ─────────────────────────
 
     async def get_tweet_count_by_dates(
-        self, start_date: str, end_date: str
+        self, start_date: datetime, end_date: datetime
     ) -> int:
-        """Count posts between two ISO dates (fallback if no tracking)."""
+        """Count posts between two UTC datetimes (fallback if no tracking)."""
         url = f"{self.base_url}/api/users/{self.handle}/posts"
         resp = await self.client.get(
-            url, params={"startDate": start_date, "endDate": end_date}
+            url,
+            params={
+                "startDate": self._to_utc_z(start_date),
+                "endDate": self._to_utc_z(end_date),
+            },
         )
         resp.raise_for_status()
 
@@ -94,8 +99,16 @@ class XtrackerClient:
 
     # ── Discovery: find tracking for a Polymarket event ─────────────
 
-    async def find_tracking_for_event(self, event_url: str) -> Optional[TrackingInfo]:
-        """Match a Polymarket event URL to an Xtracker tracking."""
+    async def find_tracking_for_event(
+        self,
+        event_url: str,
+        event_end_date: Optional[datetime] = None,
+    ) -> Optional[TrackingInfo]:
+        """Match a Polymarket event URL to an Xtracker tracking.
+
+        First tries exact slug match via marketLink.
+        Falls back to closest end-date match when no marketLink is set.
+        """
         url = f"{self.base_url}/api/users/{self.handle}"
         resp = await self.client.get(url)
         resp.raise_for_status()
@@ -105,6 +118,7 @@ class XtrackerClient:
 
         event_slug = self._extract_slug(event_url)
 
+        # 1. Exact slug match via marketLink
         for t in trackings:
             market_link = t.get("marketLink") or ""
             tracking_slug = self._extract_slug(market_link)
@@ -118,7 +132,42 @@ class XtrackerClient:
                     is_active=t.get("isActive", False),
                 )
                 logger.info(
-                    "Found tracking %s for event %s", info.tracking_id, event_slug
+                    "Found tracking %s by slug for event %s", info.tracking_id, event_slug
+                )
+                return info
+
+        # 2. Fallback: match by closest end date (within 12 hours)
+        if event_end_date:
+            if event_end_date.tzinfo is None:
+                event_end_date = event_end_date.replace(tzinfo=timezone.utc)
+            best: Optional[dict] = None
+            best_diff = float("inf")
+            for t in trackings:
+                raw_end = t.get("endDate", "")
+                if not raw_end:
+                    continue
+                try:
+                    t_end = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
+                    diff = abs((t_end - event_end_date).total_seconds())
+                    if diff < best_diff:
+                        best_diff = diff
+                        best = t
+                except (ValueError, AttributeError):
+                    continue
+            if best is not None and best_diff <= 43200:  # 12 hours
+                info = TrackingInfo(
+                    tracking_id=best["id"],
+                    title=best.get("title", ""),
+                    start_date=best.get("startDate", ""),
+                    end_date=best.get("endDate", ""),
+                    market_link=best.get("marketLink"),
+                    is_active=best.get("isActive", False),
+                )
+                logger.info(
+                    "Found tracking %s by date proximity (%.0fs) for event %s",
+                    info.tracking_id,
+                    best_diff,
+                    event_slug,
                 )
                 return info
 
@@ -154,6 +203,13 @@ class XtrackerClient:
         if len(parts) >= 2 and parts[0] == "event":
             return parts[1].lower()
         return path.lower() if path else None
+
+    @staticmethod
+    def _to_utc_z(dt: datetime) -> str:
+        """Format datetime as ISO 8601 with Z suffix (required by xtracker API)."""
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     async def close(self) -> None:
         await self.client.aclose()

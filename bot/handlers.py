@@ -84,7 +84,7 @@ async def cmd_add(
     # Find matching Xtracker tracking and fetch initial tweet count
     tracking_id: str | None = None
     try:
-        tracking_info = await xtracker_client.find_tracking_for_event(url)
+        tracking_info = await xtracker_client.find_tracking_for_event(url, end_date)
         if tracking_info:
             tracking_id = tracking_info.tracking_id
             tweet_count = await xtracker_client.get_tweet_count(tracking_id)
@@ -94,7 +94,7 @@ async def cmd_add(
                 from datetime import timedelta
                 start_approx = end_date - timedelta(days=7)
                 tweet_count = await xtracker_client.get_tweet_count_by_dates(
-                    start_approx.isoformat(), end_date.isoformat()
+                    start_approx, end_date
                 )
             else:
                 await message.answer(
