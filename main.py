@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot.handlers import register_handlers
@@ -40,18 +41,18 @@ async def main() -> None:
     register_handlers(dp, db, settings, polymarket_client, xtracker_client)
 
     await bot.set_my_commands([
-        ("start",        "Show help"),
-        ("add",          "Add event (or just send a link)"),
-        ("delete",       "Remove active event"),
-        ("list",         "All events"),
-        ("status",       "Detailed status"),
-        ("count",        "Current tweet count"),
-        ("history",      "Last 10 transitions"),
-        ("mute",         "Silence notifications"),
-        ("unmute",       "Enable notifications"),
-        ("buffer_on",    "Enable range buffer"),
-        ("buffer_off",   "Disable range buffer"),
-        ("buffer_value", "Set buffer % (e.g. /buffer_value 3)"),
+        BotCommand(command="start",        description="Show help"),
+        BotCommand(command="add",          description="Add event (or just send a link)"),
+        BotCommand(command="delete",       description="Remove active event"),
+        BotCommand(command="list",         description="All events"),
+        BotCommand(command="status",       description="Detailed status"),
+        BotCommand(command="count",        description="Current tweet count"),
+        BotCommand(command="history",      description="Last 10 transitions"),
+        BotCommand(command="mute",         description="Silence notifications"),
+        BotCommand(command="unmute",       description="Enable notifications"),
+        BotCommand(command="buffer_on",    description="Enable range buffer"),
+        BotCommand(command="buffer_off",   description="Disable range buffer"),
+        BotCommand(command="buffer_value", description="Set buffer % (e.g. /buffer_value 3)"),
     ])
 
     scheduler = AsyncIOScheduler()
