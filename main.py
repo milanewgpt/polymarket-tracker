@@ -39,6 +39,21 @@ async def main() -> None:
 
     register_handlers(dp, db, settings, polymarket_client, xtracker_client)
 
+    await bot.set_my_commands([
+        ("start",        "Show help"),
+        ("add",          "Add event (or just send a link)"),
+        ("delete",       "Remove active event"),
+        ("list",         "All events"),
+        ("status",       "Detailed status"),
+        ("count",        "Current tweet count"),
+        ("history",      "Last 10 transitions"),
+        ("mute",         "Silence notifications"),
+        ("unmute",       "Enable notifications"),
+        ("buffer_on",    "Enable range buffer"),
+        ("buffer_off",   "Disable range buffer"),
+        ("buffer_value", "Set buffer % (e.g. /buffer_value 3)"),
+    ])
+
     scheduler = AsyncIOScheduler()
     setup_scheduler(scheduler, monitoring_service, settings.default_check_interval_minutes)
     scheduler.start()

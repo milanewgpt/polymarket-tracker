@@ -317,6 +317,24 @@ async def cmd_history(message: Message, db_manager: DatabaseManager) -> None:
     await message.answer(text, parse_mode="HTML")
 
 
+# ── plain URL → /add ────────────────────────────────────────────────
+
+
+@router.message()
+async def handle_plain_url(
+    message: Message,
+    db_manager: DatabaseManager,
+    settings: Settings,
+    polymarket_client: PolymarketClient,
+    xtracker_client: XtrackerClient,
+) -> None:
+    text = (message.text or "").strip()
+    if not PolymarketClient.validate_url(text):
+        return
+    message.text = f"/add {text}"
+    await cmd_add(message, db_manager, settings, polymarket_client, xtracker_client)
+
+
 # ── Registration ────────────────────────────────────────────────────
 
 
