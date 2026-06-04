@@ -94,12 +94,12 @@ async def cmd_add(
             tweet_count = await xtracker_client.get_tweet_count(tracking_id)
         elif start_time and end_date:
             tweet_count = await xtracker_client.get_tweet_count_by_dates(
-                start_time.isoformat(), end_date.isoformat()
+                start_time, end_date
             )
         elif end_date:
             from datetime import timedelta
             tweet_count = await xtracker_client.get_tweet_count_by_dates(
-                (end_date - timedelta(days=7)).isoformat(), end_date.isoformat()
+                end_date - timedelta(days=7), end_date
             )
         else:
             await message.answer(

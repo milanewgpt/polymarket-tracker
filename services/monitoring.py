@@ -86,16 +86,14 @@ class MonitoringService:
                         event.xtracker_tracking_id
                     )
                 elif event.started_at and event.ended_at:
-                    started = _ensure_aware(event.started_at)
-                    ended = _ensure_aware(event.ended_at)
                     tweet_count = await self.xtracker.get_tweet_count_by_dates(
-                        started.isoformat(), ended.isoformat()
+                        _ensure_aware(event.started_at), _ensure_aware(event.ended_at)
                     )
                 elif event.ended_at:
                     from datetime import timedelta
                     ended = _ensure_aware(event.ended_at)
                     tweet_count = await self.xtracker.get_tweet_count_by_dates(
-                        (ended - timedelta(days=7)).isoformat(), ended.isoformat()
+                        ended - timedelta(days=7), ended
                     )
                 else:
                     logger.error("Event %d has no tracking ID or end date", event.id)
