@@ -136,25 +136,27 @@ class XtrackerClient:
                 )
                 return info
 
-        # 2. Fallback: match by closest end date (within 12 hours)
+        # 2. Fallback: find active tracking whose date range contains event_end_date.
+        #    Prefer earliest startDate (= the "current week" tracking, not the next one).
         if event_end_date:
             if event_end_date.tzinfo is None:
                 event_end_date = event_end_date.replace(tzinfo=timezone.utc)
-            best: Optional[dict] = None
-            best_diff = float("inf")
+            candidates: list[tuple[datetime, dict]] = []
             for t in trackings:
-                raw_end = t.get("endDate", "")
-                if not raw_end:
+                if not t.get("isActive"):
                     continue
                 try:
-                    t_end = datetime.fromisoformat(raw_end.replace("Z", "+00:00"))
-                    diff = abs((t_end - event_end_date).total_seconds())
-                    if diff < best_diff:
-                        best_diff = diff
-                        best = t
-                except (ValueError, AttributeError):
+                    t_start = datetime.fromisoformat(
+                        t["startDate"].replace("Z", "+00:00")
+                    )
+                    t_end = datetime.fromisoformat(t["endDate"].replace("Z", "+00:00"))
+                except (KeyError, ValueError, AttributeError):
                     continue
-            if best is not None and best_diff <= 43200:  # 12 hours
+                if t_start <= event_end_date <= t_end:
+                    candidates.append((t_start, t))
+            if candidates:
+                candidates.sort(key=lambda x: x[0])
+                _, best = candidates[0]
                 info = TrackingInfo(
                     tracking_id=best["id"],
                     title=best.get("title", ""),
@@ -164,9 +166,8 @@ class XtrackerClient:
                     is_active=best.get("isActive", False),
                 )
                 logger.info(
-                    "Found tracking %s by date proximity (%.0fs) for event %s",
+                    "Found tracking %s by date range for event %s",
                     info.tracking_id,
-                    best_diff,
                     event_slug,
                 )
                 return info

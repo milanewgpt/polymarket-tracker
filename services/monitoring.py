@@ -63,6 +63,20 @@ class MonitoringService:
                 logger.error("Event %d has no state record — skipping", event.id)
                 return
 
+            # ── Resolve missing tracking ID ─────────────────────────
+            if not event.xtracker_tracking_id and event.ended_at:
+                ended_at_aware = _ensure_aware(event.ended_at)
+                tracking_info = await self.xtracker.find_tracking_for_event(
+                    event.event_url, event_end_date=ended_at_aware
+                )
+                if tracking_info:
+                    event.xtracker_tracking_id = tracking_info.tracking_id
+                    logger.info(
+                        "Resolved xtracker tracking %s for event %d",
+                        tracking_info.tracking_id,
+                        event.id,
+                    )
+
             # ── Fetch tweet count ───────────────────────────────────
             try:
                 if event.xtracker_tracking_id:
