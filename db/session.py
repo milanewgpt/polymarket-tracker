@@ -23,6 +23,15 @@ class DatabaseManager:
     async def init_db(self) -> None:
         async with self.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # migrate: add started_at if it doesn't exist yet
+            try:
+                await conn.execute(
+                    __import__("sqlalchemy").text(
+                        "ALTER TABLE events ADD COLUMN started_at DATETIME"
+                    )
+                )
+            except Exception:
+                pass
 
     def get_session(self) -> AsyncSession:
         return self.session_factory()

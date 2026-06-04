@@ -72,12 +72,18 @@ class PolymarketClient:
 
     def parse_event(
         self, event_data: dict
-    ) -> tuple[str, list[tuple[str, int, int]], Optional[datetime]]:
-        """Return (title, sorted_ranges, end_date_or_None)."""
+    ) -> tuple[str, list[tuple[str, int, int]], Optional[datetime], Optional[datetime]]:
+        """Return (title, sorted_ranges, end_date_or_None, start_time_or_None).
+
+        start_time is when tweet counting begins (startTime field), which differs
+        from the market creation date. E.g. for a 48h market "June 4-6", startTime
+        is June 4 16:00 UTC even though the market opened for trading earlier.
+        """
 
         title = event_data.get("title") or event_data.get("question") or "Unknown Event"
 
         end_date = self._parse_end_date(event_data)
+        start_time = self._parse_start_time(event_data)
 
         markets = event_data.get("markets") or event_data.get("outcomes") or []
         if not markets:
@@ -98,7 +104,7 @@ class PolymarketClient:
             raise PolymarketParseError("No valid numeric ranges found in event markets")
 
         ranges.sort(key=lambda x: x[1])
-        return title, ranges, end_date
+        return title, ranges, end_date, start_time
 
     # ── Private helpers ─────────────────────────────────────────────
 
@@ -134,6 +140,18 @@ class PolymarketClient:
                     except (ValueError, AttributeError):
                         continue
         return max(dates) if dates else None
+
+    @staticmethod
+    def _parse_start_time(event_data: dict) -> Optional[datetime]:
+        """Parse the tweet-counting start time (startTime field)."""
+        for key in ("startTime", "start_time"):
+            raw = event_data.get(key)
+            if raw:
+                try:
+                    return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    continue
+        return None
 
     async def close(self) -> None:
         await self.client.aclose()

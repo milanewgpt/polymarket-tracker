@@ -33,6 +33,7 @@ class Event(Base):
     created_at = Column(DateTime, nullable=False, default=_utcnow)
     updated_at = Column(DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
     ended_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime, nullable=True)
     buffer_enabled = Column(Boolean, nullable=False, default=True)
     buffer_percent = Column(Float, nullable=False, default=3.0)
     check_interval_minutes = Column(Integer, nullable=False, default=10)
