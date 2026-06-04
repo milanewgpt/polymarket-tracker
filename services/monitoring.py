@@ -63,8 +63,10 @@ class MonitoringService:
                 logger.error("Event %d has no state record — skipping", event.id)
                 return
 
-            # ── Resolve missing tracking ID ─────────────────────────
-            if not event.xtracker_tracking_id and event.ended_at:
+            # ── Resolve missing tracking ID (weekly markets only) ────
+            # Skip if started_at is set: that means it's a specific time-window
+            # market (e.g. 48h) — use get_tweet_count_by_dates instead of tracking.
+            if not event.xtracker_tracking_id and event.ended_at and not event.started_at:
                 ended_at_aware = _ensure_aware(event.ended_at)
                 tracking_info = await self.xtracker.find_tracking_for_event(
                     event.event_url, event_end_date=ended_at_aware

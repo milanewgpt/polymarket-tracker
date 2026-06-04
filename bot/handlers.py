@@ -84,8 +84,10 @@ async def cmd_add(
     # Find matching Xtracker tracking and fetch initial tweet count
     tracking_id: str | None = None
     try:
+        # For time-windowed markets (start_time set), skip weekly tracking lookup
+        # and count posts directly for the exact window.
         tracking_info = await xtracker_client.find_tracking_for_event(
-            url, event_end_date=end_date
+            url, event_end_date=None if start_time else end_date
         )
         if tracking_info:
             tracking_id = tracking_info.tracking_id
